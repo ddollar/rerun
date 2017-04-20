@@ -21,7 +21,8 @@ import (
 var (
 	do_tests = flag.Bool("test", false, "Run tests (before running program)")
 	do_build = flag.Bool("build", false, "Build program")
-	ignore   = flag.Bool("no-git", true, "ignore .git directory")
+	ignore   = flag.String("ignore", "", "ignore by special pattern")
+	no_git   = flag.Bool("no-git", true, "ignore .git directory")
 	watch    = flag.String("watch", "", "root directory to watch")
 )
 
@@ -39,21 +40,27 @@ func buildpathDir(buildpath string) (string, error) {
 	return pkg.Dir, nil
 }
 
-type scanCallback func(path string)
+type scanCallback func(dir string)
 
-func scanChanges(path string, cb scanCallback) {
-	log("watching: %s", path)
+func scanChanges(dir string, cb scanCallback) {
+	log("watching: %s", dir)
 
 	last := time.Now()
 
 	for {
-		filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
-			if *ignore && info.IsDir() && p == filepath.Join(path, ".git") {
+		filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+			if *no_git && info.IsDir() && p == filepath.Join(dir, ".git") {
 				return filepath.SkipDir
+			}
+			if *ignore != "" {
+				match, _ := path.Match(*ignore, path.Base(p))
+				if match {
+					return filepath.SkipDir
+				}
 			}
 
 			if info.ModTime().After(last) {
-				cb(path)
+				cb(dir)
 				last = time.Now()
 			}
 			return nil
@@ -217,7 +224,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *ignore {
+	if *ignore != "" {
+		log("ignoring '%s' dir", *ignore)
+	}
+
+	if *no_git {
 		log("ignoring .git dir")
 	}
 
